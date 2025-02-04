@@ -1,4 +1,4 @@
-FROM ubuntu:24.10
+FROM arm64v8/ubuntu:24.04
 ENV TZ=Europe/Paris DEBIAN_FRONTEND=noninteractive
 RUN apt-get update
 RUN apt-get install -y sudo
@@ -14,7 +14,7 @@ RUN sudo apt-get install -y \
   bash-completion \
   ca-certificates \
   wget \
-  subversion \
+  git \
   make \
   gcc \
   sed \
@@ -26,6 +26,28 @@ RUN sudo apt-get install -y \
   libreadline-dev \
   libncurses-dev
 RUN sudo apt-get install -y python-is-python3
-RUN wget -O setup_pips.sh https://scm.cri.ensmp.fr/svn/nlpmake/trunk/makes/setup_pips.sh
-RUN chmod +x setup_pips.sh
-RUN bash setup_pips.sh MYPIPS pips
+# Get and build Polylib
+RUN git clone https://github.com/vincentloechner/polylib.git
+RUN mkdir /home/pips/extern
+WORKDIR /home/pips/polylib
+RUN sudo apt install -y autoconf autoconf-archive gnu-standards autoconf-doc libtool gettext
+RUN ./autogen.sh
+RUN ./configure --prefix=/home/pips/extern
+RUN make
+RUN make install
+ENV PIPS_ARCH=LINUX_aarch64_LL
+RUN mkdir -p /home/pips/extern/lib/$PIPS_ARCH
+WORKDIR /home/pips/extern/lib/$PIPS_ARCH
+RUN ln -s ../libpolylib*64.a libpolylib.a
+RUN ln -s ../libpolylib*64.so libpolylib.so
+RUN ln -s ../libpolylib*64.so libpolylib64.so
+RUN for so in ../libpolylib*.so.* ; do ln -s $so; done
+# Build PIPS
+WORKDIR /home/pips
+RUN git clone https://github.com/criminesparis/pips.git
+WORKDIR /home/pips/pips
+RUN ln -s ../extern extern
+RUN make -j 1 -C /home/pips/pips/newgen clean compile
+RUN make -j 1 -C /home/pips/pips/linear clean compile
+ENV PATH=/home/pips/pips/newgen/bin:/home/pips/pips/newgen/bin/$PIPS_ARCH:$PATH
+RUN make -j 1 -C /home/pips/pips/pips clean compile
